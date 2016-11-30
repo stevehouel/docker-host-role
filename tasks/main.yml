@@ -1,0 +1,157 @@
+---
+# tasks file for docker-host
+
+- name: Ensure Docker storage image path is available
+  file:
+    path: "{{ docker_image_path }}"
+    state: "directory"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  tags:
+    - init
+
+# Add docker repository key
+- name: Add docker repository key
+  apt_key:
+    data: "{{ lookup('file', 'docker.gpg') }}"
+    state: "present"
+    id: "2C52609D"
+  tags: docker
+
+# Add docker repository packages source
+- name: Add docker repository packages source
+  apt_repository:
+    repo: "deb https://apt.dockerproject.org/repo ubuntu-{{ ansible_distribution_release }} main"
+    state: "present"
+    update_cache: "yes"
+  sudo: true
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ https_proxy }}"
+    no_proxy: "{{ no_proxy }}"
+  tags: docker
+
+# Ensure latest version of Docker and its dependencies are installed and up to date
+- name: Ensure latest version of Docker and its dependencies are installed and up to date
+  apt:
+    name: "{{ item }}"
+    update_cache: "yes"
+    state: "latest"
+    allow_unauthenticated: "yes"
+  with_items:
+    - python-dev
+    - python-setuptools
+    - python-pip
+    - docker-engine
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ https_proxy }}"
+    no_proxy: "{{ no_proxy }}"
+  tags: docker
+
+# Ensure docker-py is present
+- name: Ensure docker-py is present
+  pip:
+    name: "docker-py"
+    version: "1.6.0"
+    state: "present"
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ https_proxy }}"
+    no_proxy: "{{ no_proxy }}"
+  tags: docker
+
+# Ensure Docker service file is present
+- name: Debian files are present
+  file:
+    path: "/lib/systemd/system/docker.service"
+    owner: "root"
+    group: "root"
+    mode: "644"
+    state: "file"
+  register: copy_result
+  tags: docker
+
+- name: Configure http_proxy for docker
+  lineinfile:
+    dest: "/etc/default/docker"
+    regexp: "^export http_proxy="
+    line: "export http_proxy=\"{{ http_proxy }}\""
+  register: copy_result
+  tags: docker
+
+- name: Configure https_proxy for docker
+  lineinfile:
+    dest: "/etc/default/docker"
+    regexp: "^export https_proxy="
+    line: "export https_proxy=\"{{ http_proxy }}\""
+  register: copy_result
+  tags: docker
+
+- name: Configure no_proxy for docker
+  lineinfile:
+    dest: "/etc/default/docker"
+    regexp: "^export no_proxy="
+    line: "export no_proxy=\"{{ no_proxy }}\""
+  register: copy_result
+  tags: docker
+
+- name: Create Docker_Opts var if insecure-registries found
+  set_fact:
+    insecure_registries: "{% if docker_insecure_registries | length > 0 %} --insecure-registry {{ docker_insecure_registries | join(' --insecure-registry ') }} {% endif %}"
+
+- name: Configure Docker_Opts for docker
+  lineinfile:
+    dest: "/etc/default/docker"
+    regexp: "^DOCKER_OPTS="
+    line: "DOCKER_OPTS=\" {{ insecure_registries }} -g={{ docker_image_path }}/{{ docker_hostname }}\""
+  register: copy_result
+  tags: docker
+
+- name: Debian Daemon is reloaded
+  service:
+    name: "docker"
+    state: "restarted"
+  when: copy_result|changed
+  tags: docker
+
+- name: Ensure Ansible can use docker service
+  user:
+    name: "ansible"
+    groups: "docker"
+    append: "yes"
+    createhome: "yes"
+    generate_ssh_key: "yes"
+  tags: docker
+
+- name: Ensure SSH keys are authorized for ansible user
+  lineinfile:
+    dest: "/home/ansible/.ssh/authorized_keys"
+    regexp: "^{{ ansible_ssh_pub_key }}$"
+    line: "{{ ansible_ssh_pub_key }}"
+    create: "yes"
+  when: ansible_ssh_pub_key is defined
+  tags: docker
+
+- name: Ensure SSH auhtorized keys file is created
+  file:
+    path: "/home/ansible/.ssh/authorized_keys"
+    owner: "ansible"
+    group: "ansible"
+    mode: "600"
+    state: "file"
+  tags: docker
+
+- name: Ensure Ansible user can sudo without password
+  copy:
+    src: sudoers.conf
+    dest: /etc/sudoers.d/ansible
+  tags: docker
+
+- name: Ensure Adminomc can use docker service
+  user:
+    name: "adminomc"
+    groups: "docker"
+    append: "yes"
+  tags: docker
