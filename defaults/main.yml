@@ -1,6 +1,4 @@
 ---
 # defaults file for docker-host
-
-docker_insecure_registries: ["registry.prod.athena.ts-agora.com"]
 docker_image_path: /data/docker
 docker_hostname: "{{ ansible_host.split('.')[0] }}"
