@@ -1,0 +1,5 @@
+[Service]
+ExecStart=
+ExecStart=/usr/bin/dockerd {{ insecure_registries }} -g={{ docker_image_path }}/{{ docker_hostname }}
+Environment="HTTP_PROXY={{ http_proxy }}"
+Environment="HTTPS_PROXY={{ https_proxy }}"

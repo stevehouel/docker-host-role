@@ -1,2 +1,11 @@
 ---
 # handlers file for gitlab
+- name: reload daemon
+  raw: systemctl daemon-reload
+  tags: docker
+
+- name: restart daemon
+  service:
+    name: "docker"
+    state: "restarted"
+  tags: docker

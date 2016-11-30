@@ -12,15 +12,16 @@
     - init
 
 # Add docker repository key
-- name: Add docker repository key
+- name: Add docker repository key (Ubuntu)
   apt_key:
-    data: "{{ lookup('file', 'docker.gpg') }}"
+    keyserver: "hkp://p80.pool.sks-keyservers.net:80"
     state: "present"
-    id: "2C52609D"
+    id: "58118E89F3A912897C070ADBF76221572C52609D"
+  when: ansible_os_family == "Debian"
   tags: docker
 
 # Add docker repository packages source
-- name: Add docker repository packages source
+- name: Add docker repository packages source (Ubuntu)
   apt_repository:
     repo: "deb https://apt.dockerproject.org/repo ubuntu-{{ ansible_distribution_release }} main"
     state: "present"
@@ -30,10 +31,11 @@
     http_proxy: "{{ http_proxy }}"
     https_proxy: "{{ https_proxy }}"
     no_proxy: "{{ no_proxy }}"
+  when: ansible_os_family == "Debian"
   tags: docker
 
 # Ensure latest version of Docker and its dependencies are installed and up to date
-- name: Ensure latest version of Docker and its dependencies are installed and up to date
+- name: Ensure latest version of Docker and its dependencies are installed and up to date (Ubuntu)
   apt:
     name: "{{ item }}"
     update_cache: "yes"
@@ -44,10 +46,48 @@
     - python-setuptools
     - python-pip
     - docker-engine
+    - git
   environment:
     http_proxy: "{{ http_proxy }}"
     https_proxy: "{{ https_proxy }}"
     no_proxy: "{{ no_proxy }}"
+  when: ansible_os_family == "Debian"
+  tags: docker
+
+# Add docker repository packages source
+- name: Add docker repository packages source (Centos)
+  yum_repository:
+    name: DockerRepository
+    baseurl: "https://yum.dockerproject.org/repo/main/centos/7/"
+    description: Docker Repository
+    gpgcheck: yes
+    enabled: yes
+    state: present
+    gpgkey: https://yum.dockerproject.org/gpg
+  sudo: true
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ https_proxy }}"
+    no_proxy: "{{ no_proxy }}"
+  when: ansible_os_family == "RedHat"
+  tags: docker
+
+# Ensure latest version of Docker and its dependencies are installed and up to date
+- name: Ensure latest version of Docker and its dependencies are installed and up to date (Centos)
+  yum:
+    name: "{{ item }}"
+    state: "latest"
+  with_items:
+    - python-devel
+    - python-setuptools
+    - python-pip
+    - docker-engine
+    - git
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ https_proxy }}"
+    no_proxy: "{{ no_proxy }}"
+  when: ansible_os_family == "RedHat"
   tags: docker
 
 # Ensure docker-py is present
@@ -62,6 +102,13 @@
     no_proxy: "{{ no_proxy }}"
   tags: docker
 
+# Ensure service is enabled
+- name: Daemon is enabled
+  service:
+    name: "docker"
+    enabled: yes
+  tags: docker
+
 # Ensure Docker service file is present
 - name: Debian files are present
   file:
@@ -73,43 +120,68 @@
   register: copy_result
   tags: docker
 
-- name: Configure http_proxy for docker
+- name: Configure http_proxy for docker (Ubuntu)
   lineinfile:
     dest: "/etc/default/docker"
     regexp: "^export http_proxy="
     line: "export http_proxy=\"{{ http_proxy }}\""
   register: copy_result
+  when: ansible_os_family == "Debian"
   tags: docker
 
-- name: Configure https_proxy for docker
+- name: Configure https_proxy for docker (Ubuntu)
   lineinfile:
     dest: "/etc/default/docker"
     regexp: "^export https_proxy="
     line: "export https_proxy=\"{{ http_proxy }}\""
   register: copy_result
+  when: ansible_os_family == "Debian"
   tags: docker
 
-- name: Configure no_proxy for docker
+- name: Configure no_proxy for docker (Ubuntu)
   lineinfile:
     dest: "/etc/default/docker"
     regexp: "^export no_proxy="
     line: "export no_proxy=\"{{ no_proxy }}\""
   register: copy_result
+  when: ansible_os_family == "Debian"
+  tags: docker
+
+- name: Configure http_proxy for docker (ReHat)
+  file:
+    state: directory
+    path: /etc/systemd/system/docker.service.d
+  notify: 
+    - reload daemon
+    - restart daemon
+  when: ansible_os_family == "RedHat"
   tags: docker
 
 - name: Create Docker_Opts var if insecure-registries found
   set_fact:
     insecure_registries: "{% if docker_insecure_registries | length > 0 %} --insecure-registry {{ docker_insecure_registries | join(' --insecure-registry ') }} {% endif %}"
 
-- name: Configure Docker_Opts for docker
+- name: Configure Docker_Opts for docker (RedHat)
+  template:
+    dest: /etc/systemd/system/docker.service.d/http-proxy.conf
+    src: docker.opts
+  register: copy_result
+  when: ansible_os_family == "RedHat"
+  notify: 
+    - reload daemon
+    - restart daemon
+  tags: docker
+
+- name: Configure Docker_Opts for docker (Ubuntu)
   lineinfile:
     dest: "/etc/default/docker"
     regexp: "^DOCKER_OPTS="
     line: "DOCKER_OPTS=\" {{ insecure_registries }} -g={{ docker_image_path }}/{{ docker_hostname }}\""
   register: copy_result
+  when: ansible_os_family == "Debian"
   tags: docker
 
-- name: Debian Daemon is reloaded
+- name: reload daemon
   service:
     name: "docker"
     state: "restarted"

@@ -2,3 +2,6 @@
 # defaults file for docker-host
 docker_image_path: /data/docker
 docker_hostname: "{{ ansible_host.split('.')[0] }}"
+http_proxy: ""
+https_proxy: ""
+no_proxy: ""
